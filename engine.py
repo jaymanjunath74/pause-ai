@@ -1,138 +1,250 @@
-import os
-from openai import AzureOpenAI
+import re
+from collections import defaultdict
 
-# ----------------------------
-# Azure OpenAI Client
-# ----------------------------
-client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-02-15-preview",
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-)
+# ============================
+# SIGNAL DEFINITIONS
+# ============================
 
-DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+SIGNALS = {
+    # 🔴 STAKES
+    "financial_magnitude_high": {
+        "weight": 25,
+        "description": "Large financial commitment detected"
+    },
+    "irreversible_decision": {
+        "weight": 25,
+        "description": "Decision is hard to reverse"
+    },
+    "career_impact": {
+        "weight": 20,
+        "description": "Career impact involved"
+    },
+    "relationship_impact": {
+        "weight": 20,
+        "description": "Relationship impact involved"
+    },
+    "health_legal_risk": {
+        "weight": 30,
+        "description": "Health or legal risk detected"
+    },
+
+    # 🟡 CONTEXT
+    "low_context": {
+        "weight": 20,
+        "description": "Insufficient context"
+    },
+    "missing_constraints": {
+        "weight": 15,
+        "description": "Missing constraints (budget, limits)"
+    },
+    "missing_alternatives": {
+        "weight": 10,
+        "description": "No alternatives considered"
+    },
+    "unclear_objective": {
+        "weight": 15,
+        "description": "Goal or success criteria unclear"
+    },
+
+    # 🟣 COGNITIVE
+    "urgency_bias": {
+        "weight": 20,
+        "description": "Urgency detected"
+    },
+    "emotional_state": {
+        "weight": 15,
+        "description": "Emotional influence detected"
+    },
+    "reassurance_seeking": {
+        "weight": 10,
+        "description": "User seeking external validation"
+    },
+
+    # 🔵 ACTION
+    "insufficient_information": {
+        "weight": 20,
+        "description": "Not enough information to act"
+    },
+    "premature_action": {
+        "weight": 15,
+        "description": "Action suggested too early"
+    },
+    "decision_can_wait": {
+        "weight": 10,
+        "description": "No real urgency"
+    },
+
+    # 🟢 AI FIT
+    "needs_human_judgment": {
+        "weight": 15,
+        "description": "Better handled by human judgment"
+    },
+    "high_risk_advice": {
+        "weight": 20,
+        "description": "High-risk domain"
+    }
+}
 
 
-# ----------------------------
-# Signal Detection (Deterministic)
-# ----------------------------
-def detect_signals(prompt: str):
-    prompt_lower = prompt.lower()
+# ============================
+# DETECTION ENGINE
+# ============================
 
-    signals = []
+def detect_signals(text):
+    signals = set()
+    t = text.lower()
 
-    # Urgency
-    urgency_words = ["now", "asap", "immediately", "urgent", "right away"]
-    if any(word in prompt_lower for word in urgency_words):
-        signals.append("urgency_detected")
+    # ------------------------
+    # STAKES
+    # ------------------------
+    if re.search(r"\$\s?\d+", text):
+        signals.add("financial_magnitude_high")
 
-    # Emotional language
-    emotional_words = ["angry", "frustrated", "hate", "love", "upset", "excited"]
-    if any(word in prompt_lower for word in emotional_words):
-        signals.append("emotional_language")
+    if any(w in t for w in ["buy", "spend", "purchase", "invest"]):
+        signals.add("irreversible_decision")
 
-    # Absolute thinking
-    absolute_words = ["always", "never", "everyone", "no one"]
-    if any(word in prompt_lower for word in absolute_words):
-        signals.append("absolute_thinking")
+    if any(w in t for w in ["job", "quit", "career"]):
+        signals.add("career_impact")
 
-    # Low context
-    if len(prompt.split()) < 8:
-        signals.append("low_context")
+    if any(w in t for w in ["relationship", "breakup", "text her", "text him"]):
+        signals.add("relationship_impact")
 
-    return signals
+    if any(w in t for w in ["legal", "lawsuit", "doctor", "medical"]):
+        signals.add("health_legal_risk")
+
+    # ------------------------
+    # CONTEXT
+    # ------------------------
+    if len(text.split()) < 8:
+        signals.add("low_context")
+
+    if "should i" in t:
+        signals.add("missing_constraints")
+        signals.add("missing_alternatives")
+
+    if "?" in text:
+        signals.add("unclear_objective")
+
+    # ------------------------
+    # COGNITIVE
+    # ------------------------
+    if any(w in t for w in ["now", "asap", "urgent"]):
+        signals.add("urgency_bias")
+
+    if any(w in t for w in ["hate", "love", "angry", "excited"]):
+        signals.add("emotional_state")
+
+    if "should i" in t:
+        signals.add("reassurance_seeking")
+
+    # ------------------------
+    # ACTION
+    # ------------------------
+    if "should i" in t:
+        signals.add("insufficient_information")
+
+    if any(w in t for w in ["buy", "quit", "send"]):
+        signals.add("premature_action")
+
+    if not any(w in t for w in ["now", "urgent"]):
+        signals.add("decision_can_wait")
+
+    # ------------------------
+    # AI FIT
+    # ------------------------
+    if any(w in t for w in ["should i", "life", "marry"]):
+        signals.add("needs_human_judgment")
+
+    if any(w in t for w in ["invest", "medical", "legal"]):
+        signals.add("high_risk_advice")
+
+    return list(signals)
 
 
-# ----------------------------
-# Classification
-# ----------------------------
-def classify_prompt(prompt: str):
-    p = prompt.lower()
+# ============================
+# SCORING ENGINE
+# ============================
 
-    if any(word in p for word in ["money", "invest", "buy", "sell", "price"]):
-        return "Financial"
-
-    if any(word in p for word in ["job", "career", "offer", "boss"]):
-        return "Career"
-
-    if any(word in p for word in ["relationship", "friend", "girlfriend", "boyfriend"]):
-        return "Social"
-
-    if any(word in p for word in ["feel", "emotion", "angry", "sad"]):
-        return "Emotional"
-
-    return "General"
-
-
-# ----------------------------
-# Scoring System
-# ----------------------------
-def compute_pause_score(signals):
+def calculate_score(signals):
     score = 100
 
-    penalties = {
-        "urgency_detected": 20,
-        "emotional_language": 15,
-        "absolute_thinking": 10,
-        "low_context": 15
-    }
-
+    # subtract weights
     for s in signals:
-        score -= penalties.get(s, 0)
+        if s in SIGNALS:
+            score -= SIGNALS[s]["weight"]
+
+    # cognitive stacking penalty
+    cognitive = [s for s in signals if s in ["urgency_bias", "emotional_state", "reassurance_seeking"]]
+    if len(cognitive) >= 2:
+        score -= 10
 
     return max(score, 0)
 
 
-# ----------------------------
-# LLM Controlled Interpretation
-# ----------------------------
-def generate_analysis(prompt, decision_type, signals, score):
-    system_prompt = f"""
-You are a decision analysis assistant.
+# ============================
+# CLASSIFICATION
+# ============================
 
-DO NOT be verbose.
-DO NOT rewrite the prompt.
-DO NOT give generic advice.
+def classify_type(text):
+    t = text.lower()
 
-You must respond in this EXACT format:
+    if any(w in t for w in ["job", "career"]):
+        return "Career"
+    if any(w in t for w in ["buy", "money", "invest", "spend"]):
+        return "Financial"
+    if any(w in t for w in ["relationship", "marry", "breakup"]):
+        return "Personal"
 
-Reason:
-- bullet points explaining risks based on signals
-
-Recommendation:
-- 1 clear actionable suggestion
-
-Context:
-Decision Type: {decision_type}
-Signals: {signals}
-Score: {score}
-"""
-
-    response = client.chat.completions.create(
-        model=DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.2
-    )
-
-    return response.choices[0].message.content
+    return "General"
 
 
-# ----------------------------
-# Main Function
-# ----------------------------
-def analyze_input(prompt: str):
-    signals = detect_signals(prompt)
-    decision_type = classify_prompt(prompt)
-    score = compute_pause_score(signals)
+# ============================
+# ANALYSIS GENERATOR
+# ============================
 
-    llm_output = generate_analysis(prompt, decision_type, signals, score)
+def generate_analysis(signals):
+    reasons = []
+    recommendations = []
+
+    for s in signals:
+        if s in SIGNALS:
+            reasons.append(SIGNALS[s]["description"])
+
+    # Smart recommendations
+    if "financial_magnitude_high" in signals:
+        recommendations.append("Evaluate affordability relative to income and savings.")
+
+    if "low_context" in signals:
+        recommendations.append("Add more context before making a decision.")
+
+    if "irreversible_decision" in signals:
+        recommendations.append("Consider long-term impact and resale/liquidity.")
+
+    if "needs_human_judgment" in signals:
+        recommendations.append("Discuss with a trusted person before deciding.")
+
+    if not recommendations:
+        recommendations.append("Decision appears low risk. Proceed with awareness.")
 
     return {
-        "type": decision_type,
+        "reason": reasons[:3],  # top 3 only
+        "recommendation": recommendations[:3]
+    }
+
+
+# ============================
+# MAIN ENTRY
+# ============================
+
+def analyze_input(text):
+    signals = detect_signals(text)
+    score = calculate_score(signals)
+    decision_type = classify_type(text)
+    analysis = generate_analysis(signals)
+
+    return {
         "score": score,
+        "type": decision_type,
         "signals": signals,
-        "analysis": llm_output
+        "analysis": analysis
     }
