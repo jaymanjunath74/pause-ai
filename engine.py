@@ -3,7 +3,7 @@ import streamlit as st
 from openai import OpenAI
 
 # ============================
-# CLIENT HANDLING (SAFE)
+# CLIENT
 # ============================
 
 def get_client():
@@ -21,11 +21,11 @@ def get_client():
 def extract_structure(text):
     client = get_client()
 
-    # Fallback if no API key
     if client is None:
         return {
             "request_kind": "unknown",
             "decision_present": False,
+            "decision_type": "none",
             "decision_statement": None,
             "stakes_level": "unknown",
             "time_pressure": "unknown",
@@ -36,26 +36,56 @@ def extract_structure(text):
         }
 
     prompt = f"""
-You are a decision analysis engine.
+You are a decision intelligence system.
 
-Convert the user input into a structured JSON.
+Your job is to determine whether a user input involves a decision — even if the decision is not explicitly stated.
+
+A decision is present if:
+- The user is choosing between actions
+- The user is planning a significant action
+- The user is asking "how to" do something meaningful (this implies a decision)
+
+Examples:
+- "Should I quit my job?" → decision (explicit)
+- "How do I quit my job?" → decision (implicit)
+- "I want to move abroad" → decision (implicit)
+- "Write me an email" → NOT a decision
+- "What is inflation?" → NOT a decision
+
+---
 
 User Input:
 "{text}"
 
-Return ONLY valid JSON with this schema:
+---
+
+Return ONLY valid JSON:
 
 {{
-  "request_kind": "decision | task | information | conversation | unknown",
+  "request_kind": "decision | task | information | conversation | mixed",
+
   "decision_present": true/false,
-  "decision_statement": "string or null",
-  "stakes_level": "low | medium | high | unknown",
+
+  "decision_type": "explicit | implicit | none",
+
+  "decision_statement": "clear decision being considered OR null",
+
+  "stakes_level": "low | medium | high",
+
   "time_pressure": "low | medium | high | unknown",
+
   "information_completeness": "low | medium | high",
-  "reversibility": "low | medium | high | unknown",
+
+  "reversibility": "low | medium | high",
+
   "uncertainty_level": "low | medium | high",
+
   "confidence": 0.0-1.0
 }}
+
+IMPORTANT:
+- If there is ANY reasonable interpretation of a decision → set decision_present = true
+- Prefer false negatives LESS than false positives
 """
 
     try:
@@ -66,12 +96,13 @@ Return ONLY valid JSON with this schema:
         )
 
         content = response.choices[0].message.content
-        return json.loads(content)
+        structure = json.loads(content)
 
     except Exception:
-        return {
+        structure = {
             "request_kind": "unknown",
             "decision_present": False,
+            "decision_type": "none",
             "decision_statement": None,
             "stakes_level": "unknown",
             "time_pressure": "unknown",
@@ -81,9 +112,20 @@ Return ONLY valid JSON with this schema:
             "confidence": 0.0
         }
 
+    # ============================
+    # CONFIDENCE-BASED FALLBACK
+    # ============================
+
+    if structure.get("confidence", 0) < 0.5:
+        if structure.get("request_kind") in ["task", "mixed"]:
+            structure["decision_present"] = True
+            structure["decision_type"] = "implicit"
+
+    return structure
+
 
 # ============================
-# SCORING (DETERMINISTIC)
+# SCORING
 # ============================
 
 def calculate_score(structure):
@@ -137,7 +179,7 @@ def get_action(score):
 
 
 # ============================
-# QUESTION ENGINE (DERIVED)
+# QUESTIONS
 # ============================
 
 def generate_questions(structure):
@@ -197,11 +239,10 @@ def generate_analysis(structure):
 def analyze_input(text):
     structure = extract_structure(text)
 
-    # ROUTING (no hardcoding, based on structure)
-    if not structure.get("decision_present", False):
+    if not structure.get("decision_present"):
         return {
             "intent": structure.get("request_kind", "unknown"),
-            "message": f"This appears to be a '{structure.get('request_kind')}' request, not a decision problem."
+            "message": f"This appears to be a '{structure.get('request_kind')}' request, not a clear decision problem."
         }
 
     score = calculate_score(structure)

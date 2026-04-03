@@ -12,73 +12,85 @@ if st.button("Analyze"):
 
     if not user_input.strip():
         st.warning("Please enter something first.")
-    else:
-        result = analyze_input(user_input)
+        st.stop()
 
-        # ============================
-        # INTENT HANDLING
-        # ============================
+    result = analyze_input(user_input)
 
-        if result.get("intent"):
-            st.info(result["message"])
-            st.stop()
+    # ============================
+    # INTENT HANDLING
+    # ============================
 
-        score = result["score"]
+    if result.get("intent"):
+        intent = result.get("intent")
 
-        # ============================
-        # SCORE
-        # ============================
+        if intent == "task":
+            st.info("This looks like a task, but there may be an underlying decision.")
 
-        if score >= 80:
-            st.success(f"Pause Score: {score} (Low Risk)")
-        elif score >= 50:
-            st.warning(f"Pause Score: {score} (Moderate Risk)")
+        elif intent == "information":
+            st.info("This looks like an information request, not a decision.")
+
+        elif intent == "conversation":
+            st.info("This appears conversational, not a decision.")
+
         else:
-            st.error(f"Pause Score: {score} (High Risk)")
+            st.info(result.get("message"))
 
-        # ============================
-        # STRUCTURED OUTPUT
-        # ============================
+        st.stop()
 
-        st.subheader("Decision Breakdown")
+    score = result["score"]
 
-        structure = result["structure"]
+    # ============================
+    # SCORE
+    # ============================
 
-        for k, v in structure.items():
-            if k != "confidence":
-                st.write(f"**{k.replace('_', ' ').title()}**: {v}")
+    if score >= 80:
+        st.success(f"Pause Score: {score} (Low Risk)")
+    elif score >= 50:
+        st.warning(f"Pause Score: {score} (Moderate Risk)")
+    else:
+        st.error(f"Pause Score: {score} (High Risk)")
 
-        # ============================
-        # DECISION INTELLIGENCE
-        # ============================
+    # ============================
+    # STRUCTURE
+    # ============================
 
-        st.subheader("Decision Intelligence")
+    st.subheader("Decision Breakdown")
 
-        col1, col2, col3 = st.columns(3)
+    for k, v in result["structure"].items():
+        if k != "confidence":
+            st.write(f"**{k.replace('_', ' ').title()}**: {v}")
 
-        col1.metric("Weight", result["decision_weight"])
-        col2.metric("Reversibility", result["reversibility"])
-        col3.metric("Action", result["action"])
+    # ============================
+    # INTELLIGENCE
+    # ============================
 
-        # ============================
-        # QUESTIONS
-        # ============================
+    st.subheader("Decision Intelligence")
 
-        st.subheader("Questions to Consider")
+    col1, col2, col3 = st.columns(3)
 
-        for q in result["questions"]:
-            st.write(f"- {q}")
+    col1.metric("Weight", result["decision_weight"])
+    col2.metric("Reversibility", result["reversibility"])
+    col3.metric("Action", result["action"])
 
-        # ============================
-        # ANALYSIS
-        # ============================
+    # ============================
+    # QUESTIONS
+    # ============================
 
-        st.subheader("Analysis")
+    st.subheader("Questions to Consider")
 
-        st.markdown("**Reason:**")
-        for r in result["analysis"]["reason"]:
-            st.write(f"- {r}")
+    for q in result["questions"]:
+        st.write(f"- {q}")
 
-        st.markdown("**Recommendation:**")
-        for r in result["analysis"]["recommendation"]:
-            st.write(f"- {r}")
+    # ============================
+    # ANALYSIS
+    # ============================
+
+    st.subheader("Analysis")
+
+    st.markdown("**Reason:**")
+    for r in result["analysis"]["reason"]:
+        st.write(f"- {r}")
+
+    st.markdown("**Recommendation:**")
+    for r in result["analysis"]["recommendation"]:
+        st.write(f"- {r}")
