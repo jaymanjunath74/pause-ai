@@ -1,147 +1,74 @@
 import re
-from collections import defaultdict
 
 # ============================
-# SIGNAL DEFINITIONS
+# SIGNAL CONFIG
 # ============================
 
 SIGNALS = {
-    # 🔴 STAKES
-    "financial_magnitude_high": {
-        "weight": 25,
-        "description": "Large financial commitment detected"
-    },
-    "irreversible_decision": {
-        "weight": 25,
-        "description": "Decision is hard to reverse"
-    },
-    "career_impact": {
-        "weight": 20,
-        "description": "Career impact involved"
-    },
-    "relationship_impact": {
-        "weight": 20,
-        "description": "Relationship impact involved"
-    },
-    "health_legal_risk": {
-        "weight": 30,
-        "description": "Health or legal risk detected"
-    },
+    "financial_magnitude_high": 25,
+    "irreversible_decision": 25,
+    "career_impact": 20,
+    "relationship_impact": 20,
+    "health_legal_risk": 30,
 
-    # 🟡 CONTEXT
-    "low_context": {
-        "weight": 20,
-        "description": "Insufficient context"
-    },
-    "missing_constraints": {
-        "weight": 15,
-        "description": "Missing constraints (budget, limits)"
-    },
-    "missing_alternatives": {
-        "weight": 10,
-        "description": "No alternatives considered"
-    },
-    "unclear_objective": {
-        "weight": 15,
-        "description": "Goal or success criteria unclear"
-    },
+    "low_context": 20,
+    "missing_constraints": 15,
+    "missing_alternatives": 10,
+    "unclear_objective": 15,
 
-    # 🟣 COGNITIVE
-    "urgency_bias": {
-        "weight": 20,
-        "description": "Urgency detected"
-    },
-    "emotional_state": {
-        "weight": 15,
-        "description": "Emotional influence detected"
-    },
-    "reassurance_seeking": {
-        "weight": 10,
-        "description": "User seeking external validation"
-    },
+    "urgency_bias": 20,
+    "emotional_state": 15,
+    "reassurance_seeking": 10,
 
-    # 🔵 ACTION
-    "insufficient_information": {
-        "weight": 20,
-        "description": "Not enough information to act"
-    },
-    "premature_action": {
-        "weight": 15,
-        "description": "Action suggested too early"
-    },
-    "decision_can_wait": {
-        "weight": 10,
-        "description": "No real urgency"
-    },
+    "insufficient_information": 20,
+    "premature_action": 15,
+    "decision_can_wait": 10,
 
-    # 🟢 AI FIT
-    "needs_human_judgment": {
-        "weight": 15,
-        "description": "Better handled by human judgment"
-    },
-    "high_risk_advice": {
-        "weight": 20,
-        "description": "High-risk domain"
-    }
+    "needs_human_judgment": 15,
+    "high_risk_advice": 20
 }
 
 
 # ============================
-# DETECTION ENGINE
+# SIGNAL DETECTION
 # ============================
 
 def detect_signals(text):
     signals = set()
     t = text.lower()
 
-    # ------------------------
-    # STAKES
-    # ------------------------
     if re.search(r"\$\s?\d+", text):
         signals.add("financial_magnitude_high")
 
     if any(w in t for w in ["buy", "spend", "purchase", "invest"]):
         signals.add("irreversible_decision")
 
-    if any(w in t for w in ["job", "quit", "career"]):
+    if any(w in t for w in ["job", "career", "quit"]):
         signals.add("career_impact")
 
-    if any(w in t for w in ["relationship", "breakup", "text her", "text him"]):
+    if any(w in t for w in ["relationship", "breakup"]):
         signals.add("relationship_impact")
 
-    if any(w in t for w in ["legal", "lawsuit", "doctor", "medical"]):
+    if any(w in t for w in ["medical", "legal"]):
         signals.add("health_legal_risk")
 
-    # ------------------------
-    # CONTEXT
-    # ------------------------
     if len(text.split()) < 8:
         signals.add("low_context")
 
     if "should i" in t:
         signals.add("missing_constraints")
         signals.add("missing_alternatives")
+        signals.add("reassurance_seeking")
+        signals.add("insufficient_information")
 
     if "?" in text:
         signals.add("unclear_objective")
 
-    # ------------------------
-    # COGNITIVE
-    # ------------------------
     if any(w in t for w in ["now", "asap", "urgent"]):
         signals.add("urgency_bias")
 
-    if any(w in t for w in ["hate", "love", "angry", "excited"]):
+    if any(w in t for w in ["angry", "frustrated", "excited"]):
         signals.add("emotional_state")
-
-    if "should i" in t:
-        signals.add("reassurance_seeking")
-
-    # ------------------------
-    # ACTION
-    # ------------------------
-    if "should i" in t:
-        signals.add("insufficient_information")
 
     if any(w in t for w in ["buy", "quit", "send"]):
         signals.add("premature_action")
@@ -149,36 +76,119 @@ def detect_signals(text):
     if not any(w in t for w in ["now", "urgent"]):
         signals.add("decision_can_wait")
 
-    # ------------------------
-    # AI FIT
-    # ------------------------
-    if any(w in t for w in ["should i", "life", "marry"]):
+    if "should i" in t:
         signals.add("needs_human_judgment")
 
-    if any(w in t for w in ["invest", "medical", "legal"]):
+    if any(w in t for w in ["invest", "legal", "medical"]):
         signals.add("high_risk_advice")
 
     return list(signals)
 
 
 # ============================
-# SCORING ENGINE
+# SCORING
 # ============================
 
 def calculate_score(signals):
-    score = 100
+    total_penalty = sum(SIGNALS.get(s, 0) for s in signals)
+    max_possible = sum(SIGNALS.values())
 
-    # subtract weights
-    for s in signals:
-        if s in SIGNALS:
-            score -= SIGNALS[s]["weight"]
+    score = 100 * (1 - total_penalty / max_possible)
+    return max(int(score), 5)
 
-    # cognitive stacking penalty
-    cognitive = [s for s in signals if s in ["urgency_bias", "emotional_state", "reassurance_seeking"]]
-    if len(cognitive) >= 2:
-        score -= 10
 
-    return max(score, 0)
+# ============================
+# DECISION WEIGHT
+# ============================
+
+def get_decision_weight(signals):
+    if "health_legal_risk" in signals:
+        return "Very High"
+
+    if "financial_magnitude_high" in signals or "career_impact" in signals:
+        return "High"
+
+    if "relationship_impact" in signals:
+        return "Medium"
+
+    return "Low"
+
+
+# ============================
+# REVERSIBILITY
+# ============================
+
+def get_reversibility(signals):
+    if "irreversible_decision" in signals:
+        return "Hard to Reverse"
+
+    return "Reversible"
+
+
+# ============================
+# ACTION RECOMMENDATION
+# ============================
+
+def get_action(score, signals):
+    if "insufficient_information" in signals:
+        return "Ask More Info"
+
+    if score < 30:
+        return "Pause"
+
+    if score < 60:
+        return "Think More"
+
+    return "Proceed"
+
+
+# ============================
+# ANALYSIS
+# ============================
+
+def generate_analysis(signals):
+    reasons = []
+    recommendations = []
+
+    if "financial_magnitude_high" in signals:
+        reasons.append("Large financial commitment detected")
+
+    if "low_context" in signals:
+        reasons.append("Not enough context to make a strong decision")
+
+    if "irreversible_decision" in signals:
+        reasons.append("Decision may be hard to reverse")
+
+    if "urgency_bias" in signals:
+        reasons.append("Urgency may lead to impulsive action")
+
+    recommendations.append("Clarify your constraints (budget, priorities)")
+    recommendations.append("Consider alternatives before committing")
+    recommendations.append("Delay decision if not time-sensitive")
+
+    return {
+        "reason": reasons[:3],
+        "recommendation": recommendations[:3]
+    }
+
+
+# ============================
+# MAIN
+# ============================
+
+def analyze_input(text):
+    signals = detect_signals(text)
+    score = calculate_score(signals)
+
+    return {
+        "score": score,
+        "type": classify_type(text),
+        "signals": signals,
+        "decision_weight": get_decision_weight(signals),
+        "reversibility": get_reversibility(signals),
+        "action": get_action(score, signals),
+        "analysis": generate_analysis(signals)
+    }
 
 
 # ============================
@@ -190,61 +200,11 @@ def classify_type(text):
 
     if any(w in t for w in ["job", "career"]):
         return "Career"
-    if any(w in t for w in ["buy", "money", "invest", "spend"]):
+
+    if any(w in t for w in ["money", "buy", "invest", "spend"]):
         return "Financial"
+
     if any(w in t for w in ["relationship", "marry", "breakup"]):
         return "Personal"
 
     return "General"
-
-
-# ============================
-# ANALYSIS GENERATOR
-# ============================
-
-def generate_analysis(signals):
-    reasons = []
-    recommendations = []
-
-    for s in signals:
-        if s in SIGNALS:
-            reasons.append(SIGNALS[s]["description"])
-
-    # Smart recommendations
-    if "financial_magnitude_high" in signals:
-        recommendations.append("Evaluate affordability relative to income and savings.")
-
-    if "low_context" in signals:
-        recommendations.append("Add more context before making a decision.")
-
-    if "irreversible_decision" in signals:
-        recommendations.append("Consider long-term impact and resale/liquidity.")
-
-    if "needs_human_judgment" in signals:
-        recommendations.append("Discuss with a trusted person before deciding.")
-
-    if not recommendations:
-        recommendations.append("Decision appears low risk. Proceed with awareness.")
-
-    return {
-        "reason": reasons[:3],  # top 3 only
-        "recommendation": recommendations[:3]
-    }
-
-
-# ============================
-# MAIN ENTRY
-# ============================
-
-def analyze_input(text):
-    signals = detect_signals(text)
-    score = calculate_score(signals)
-    decision_type = classify_type(text)
-    analysis = generate_analysis(signals)
-
-    return {
-        "score": score,
-        "type": decision_type,
-        "signals": signals,
-        "analysis": analysis
-    }
