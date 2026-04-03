@@ -1,13 +1,40 @@
 import json
+import streamlit as st
 from openai import OpenAI
 
-client = OpenAI()
+# ============================
+# CLIENT HANDLING (SAFE)
+# ============================
+
+def get_client():
+    try:
+        api_key = st.secrets["OPENAI_API_KEY"]
+        return OpenAI(api_key=api_key)
+    except Exception:
+        return None
+
 
 # ============================
 # LLM STRUCTURE EXTRACTION
 # ============================
 
 def extract_structure(text):
+    client = get_client()
+
+    # Fallback if no API key
+    if client is None:
+        return {
+            "request_kind": "unknown",
+            "decision_present": False,
+            "decision_statement": None,
+            "stakes_level": "unknown",
+            "time_pressure": "unknown",
+            "information_completeness": "low",
+            "reversibility": "unknown",
+            "uncertainty_level": "high",
+            "confidence": 0.0
+        }
+
     prompt = f"""
 You are a decision analysis engine.
 
@@ -31,21 +58,27 @@ Return ONLY valid JSON with this schema:
 }}
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0
-    )
-
-    content = response.choices[0].message.content
-
     try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+
+        content = response.choices[0].message.content
         return json.loads(content)
-    except:
+
+    except Exception:
         return {
             "request_kind": "unknown",
             "decision_present": False,
-            "confidence": 0
+            "decision_statement": None,
+            "stakes_level": "unknown",
+            "time_pressure": "unknown",
+            "information_completeness": "low",
+            "reversibility": "unknown",
+            "uncertainty_level": "high",
+            "confidence": 0.0
         }
 
 
@@ -127,7 +160,7 @@ def generate_questions(structure):
 
     questions.append("What are the second-order consequences of this decision?")
 
-    return questions[:5]
+    return list(dict.fromkeys(questions))[:5]
 
 
 # ============================
@@ -164,7 +197,7 @@ def generate_analysis(structure):
 def analyze_input(text):
     structure = extract_structure(text)
 
-    # ROUTING (NO HARD CODING)
+    # ROUTING (no hardcoding, based on structure)
     if not structure.get("decision_present", False):
         return {
             "intent": structure.get("request_kind", "unknown"),
