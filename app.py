@@ -24,23 +24,33 @@ if st.button("Analyze"):
     else:
         result = analyze_input(user_input)
 
+        score = result["score"]
+
         # ----------------------------
         # Score Display
         # ----------------------------
-        score = result["score"]
-
         if score >= 80:
             st.success(f"Pause Score: {score} (Low Risk)")
-        elif score >= 60:
+        elif score >= 50:
             st.warning(f"Pause Score: {score} (Moderate Risk)")
         else:
             st.error(f"Pause Score: {score} (High Risk)")
 
         # ----------------------------
-        # Type
+        # Decision Type
         # ----------------------------
         st.subheader("Decision Type")
         st.write(result["type"])
+
+        # ----------------------------
+        # Decision Intelligence (NEW)
+        # ----------------------------
+        st.subheader("Decision Intelligence")
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Weight", result["decision_weight"])
+        col2.metric("Reversibility", result["reversibility"])
+        col3.metric("Action", result["action"])
 
         # ----------------------------
         # Signals
@@ -54,13 +64,16 @@ if st.button("Analyze"):
             st.write("No major risk signals detected")
 
         # ----------------------------
-        # Analysis (clean formatting)
+        # Analysis (FIXED)
         # ----------------------------
         st.subheader("Analysis")
 
-        analysis_text = result["analysis"]
+        analysis = result["analysis"]
 
-        # Fix formatting from LLM
-        analysis_text = analysis_text.replace("\\n", "\n")
+        st.markdown("**Reason:**")
+        for r in analysis["reason"]:
+            st.write(f"- {r}")
 
-        st.markdown(f"```\n{analysis_text}\n```")
+        st.markdown("**Recommendation:**")
+        for r in analysis["recommendation"]:
+            st.write(f"- {r}")
