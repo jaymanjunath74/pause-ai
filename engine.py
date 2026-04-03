@@ -1,172 +1,170 @@
-import re
-
 # ============================
-# SIGNAL CONFIG (WEIGHTS)
+# PAUSE AI - CLEAN ENGINE (V2)
 # ============================
 
-SIGNALS = {
-    "financial_magnitude_high": 25,
-    "irreversible_decision": 25,
-    "career_impact": 20,
-    "relationship_impact": 20,
-    "health_legal_risk": 30,
-
-    "low_context": 20,
-    "missing_constraints": 15,
-    "missing_alternatives": 10,
-    "unclear_objective": 15,
-
-    "urgency_bias": 20,
-    "emotional_state": 15,
-    "reassurance_seeking": 10,
-
-    "insufficient_information": 20,
-    "premature_action": 15,
-    "decision_can_wait": 10,
-
-    "needs_human_judgment": 15,
-    "high_risk_advice": 20
-}
-
-
-# ============================
-# SIGNAL DETECTION
-# ============================
-
-def detect_signals(text):
-    signals = set()
+def extract_features(text):
     t = text.lower()
 
-    # Stakes
-    if re.search(r"\$\s?\d+", text):
-        signals.add("financial_magnitude_high")
-
-    if any(w in t for w in ["buy", "spend", "purchase", "invest"]):
-        signals.add("irreversible_decision")
-
-    if any(w in t for w in ["job", "career", "quit"]):
-        signals.add("career_impact")
-
-    if any(w in t for w in ["relationship", "breakup"]):
-        signals.add("relationship_impact")
-
-    if any(w in t for w in ["medical", "legal"]):
-        signals.add("health_legal_risk")
-
-    # Context
-    if len(text.split()) < 8:
-        signals.add("low_context")
-
-    if "should i" in t:
-        signals.update([
-            "missing_constraints",
-            "missing_alternatives",
-            "insufficient_information",
-            "reassurance_seeking",
-            "needs_human_judgment"
-        ])
-
-    if "?" in text:
-        signals.add("unclear_objective")
-
-    # Cognitive
-    if any(w in t for w in ["now", "asap", "urgent"]):
-        signals.add("urgency_bias")
-
-    if any(w in t for w in ["angry", "frustrated", "excited"]):
-        signals.add("emotional_state")
-
-    # Action
-    if any(w in t for w in ["buy", "quit", "send"]):
-        signals.add("premature_action")
-
-    if not any(w in t for w in ["now", "urgent"]):
-        signals.add("decision_can_wait")
-
-    # AI Fit
-    if any(w in t for w in ["invest", "medical", "legal"]):
-        signals.add("high_risk_advice")
-
-    return list(signals)
+    return {
+        "length": len(text.split()),
+        "has_numbers": any(char.isdigit() for char in text),
+        "is_question": "?" in text,
+        "has_uncertainty": any(word in t for word in ["should", "not sure", "confused"]),
+        "has_urgency": any(word in t for word in ["now", "asap", "urgent"]),
+        "has_action_words": any(word in t for word in ["buy", "quit", "move", "invest", "sell", "start", "stop"])
+    }
 
 
 # ============================
-# SCORING
+# DIMENSION EVALUATION
 # ============================
 
-def calculate_score(signals):
-    total_penalty = sum(SIGNALS.get(s, 0) for s in signals)
-    max_possible = sum(SIGNALS.values())
+def evaluate_dimensions(features):
+    dimensions = {}
 
-    score = 100 * (1 - total_penalty / max_possible)
-    return max(int(score), 5)
+    # Information Quality
+    if features["length"] < 8:
+        dimensions["information_quality"] = "LOW"
+    elif features["length"] < 20:
+        dimensions["information_quality"] = "MEDIUM"
+    else:
+        dimensions["information_quality"] = "HIGH"
+
+    # Clarity
+    if features["is_question"]:
+        dimensions["clarity"] = "LOW"
+    else:
+        dimensions["clarity"] = "MEDIUM"
+
+    # Stakes (proxy-based, no domain assumption)
+    if features["has_numbers"]:
+        dimensions["stakes"] = "HIGH"
+    else:
+        dimensions["stakes"] = "UNKNOWN"
+
+    # Certainty
+    if features["has_uncertainty"]:
+        dimensions["certainty"] = "LOW"
+    else:
+        dimensions["certainty"] = "MEDIUM"
+
+    # Time Pressure
+    if features["has_urgency"]:
+        dimensions["time_pressure"] = "HIGH"
+    else:
+        dimensions["time_pressure"] = "LOW"
+
+    # Action Readiness
+    if features["has_action_words"]:
+        dimensions["action_readiness"] = "HIGH"
+    else:
+        dimensions["action_readiness"] = "LOW"
+
+    return dimensions
 
 
 # ============================
-# TOP SIGNALS
+# SCORING (DIMENSION-BASED)
 # ============================
 
-def get_top_signals(signals):
-    ranked = sorted(signals, key=lambda s: SIGNALS.get(s, 0), reverse=True)
-    return ranked[:3]
+def calculate_score(dimensions):
+    score = 100
+
+    penalties = {
+        "information_quality": {"LOW": 25, "MEDIUM": 10, "HIGH": 0},
+        "clarity": {"LOW": 15, "MEDIUM": 5},
+        "certainty": {"LOW": 15, "MEDIUM": 5},
+        "time_pressure": {"HIGH": 10, "LOW": 0},
+        "action_readiness": {"HIGH": 10, "LOW": 0}
+    }
+
+    for dim, value in dimensions.items():
+        if dim in penalties and value in penalties[dim]:
+            score -= penalties[dim][value]
+
+    return max(score, 5)
 
 
 # ============================
-# DECISION WEIGHT
+# DECISION INTELLIGENCE
 # ============================
 
-def get_decision_weight(signals):
-    if "health_legal_risk" in signals:
-        return "Very High"
-    if "financial_magnitude_high" in signals or "career_impact" in signals:
+def get_decision_weight(dimensions):
+    if dimensions["stakes"] == "HIGH":
         return "High"
-    if "relationship_impact" in signals:
-        return "Medium"
-    return "Low"
+    return "Medium"
 
 
-# ============================
-# REVERSIBILITY
-# ============================
-
-def get_reversibility(signals):
-    return "Hard to Reverse" if "irreversible_decision" in signals else "Reversible"
+def get_reversibility(dimensions):
+    if dimensions["action_readiness"] == "HIGH":
+        return "Hard to Reverse"
+    return "Reversible"
 
 
-# ============================
-# ACTION
-# ============================
-
-def get_action(score, signals):
-    if "insufficient_information" in signals:
-        return "Ask More Info"
+def get_action(score):
     if score < 30:
         return "Pause"
-    if score < 60:
+    elif score < 60:
         return "Think More"
+    elif score < 80:
+        return "Proceed Carefully"
     return "Proceed"
+
+
+# ============================
+# QUESTION ENGINE (DIMENSION-DRIVEN)
+# ============================
+
+def generate_questions(dimensions):
+    questions = []
+
+    if dimensions["information_quality"] == "LOW":
+        questions.append("What key information are you missing?")
+        questions.append("What details would make this decision clearer?")
+
+    if dimensions["clarity"] == "LOW":
+        questions.append("What exactly are you trying to decide?")
+
+    if dimensions["certainty"] == "LOW":
+        questions.append("What assumptions might be incorrect?")
+        questions.append("What would change your confidence in this decision?")
+
+    if dimensions["stakes"] == "HIGH":
+        questions.append("How significant is this decision relative to your situation?")
+
+    if dimensions["time_pressure"] == "HIGH":
+        questions.append("Is the urgency real or self-imposed?")
+
+    if dimensions["action_readiness"] == "HIGH":
+        questions.append("What happens if this decision goes wrong?")
+        questions.append("Can you test this decision before fully committing?")
+
+    questions.append("What are the second-order consequences of this decision?")
+
+    # Deduplicate + limit
+    return list(dict.fromkeys(questions))[:5]
 
 
 # ============================
 # ANALYSIS
 # ============================
 
-def generate_analysis(signals):
+def generate_analysis(dimensions):
     reasons = []
     recommendations = []
 
-    if "financial_magnitude_high" in signals:
-        reasons.append("Large financial commitment detected")
+    if dimensions["information_quality"] == "LOW":
+        reasons.append("Insufficient information to make a confident decision")
 
-    if "irreversible_decision" in signals:
-        reasons.append("Decision may be hard to reverse")
+    if dimensions["clarity"] == "LOW":
+        reasons.append("Decision framing is unclear")
 
-    if "low_context" in signals:
-        reasons.append("Not enough context to decide confidently")
+    if dimensions["certainty"] == "LOW":
+        reasons.append("Uncertainty detected in decision-making")
 
-    recommendations.append("Clarify your constraints (budget, priorities)")
-    recommendations.append("Compare alternatives before committing")
-    recommendations.append("Delay decision if not time-sensitive")
+    recommendations.append("Gather more relevant information before deciding")
+    recommendations.append("Clarify your objective and constraints")
+    recommendations.append("Consider possible outcomes and risks")
 
     return {
         "reason": reasons[:3],
@@ -175,64 +173,20 @@ def generate_analysis(signals):
 
 
 # ============================
-# QUESTION ENGINE (NEW 🔥)
-# ============================
-
-def generate_questions(signals):
-    questions = []
-
-    if "financial_magnitude_high" in signals:
-        questions.append("What % of your savings does this represent?")
-        questions.append("Will this impact your emergency fund?")
-
-    if "low_context" in signals or "insufficient_information" in signals:
-        questions.append("What is your monthly income and expenses?")
-        questions.append("Do you have existing debt obligations?")
-
-    if "irreversible_decision" in signals:
-        questions.append("What happens if you regret this decision in 6 months?")
-
-    if "missing_alternatives" in signals:
-        questions.append("What cheaper or lower-risk alternatives exist?")
-
-    return questions[:5]
-
-
-# ============================
-# CLASSIFICATION
-# ============================
-
-def classify_type(text):
-    t = text.lower()
-
-    if any(w in t for w in ["job", "career"]):
-        return "Career"
-
-    if any(w in t for w in ["money", "buy", "invest", "spend"]):
-        return "Financial"
-
-    if any(w in t for w in ["relationship", "marry", "breakup"]):
-        return "Personal"
-
-    return "General"
-
-
-# ============================
-# MAIN
+# MAIN ENTRY
 # ============================
 
 def analyze_input(text):
-    signals = detect_signals(text)
-    score = calculate_score(signals)
+    features = extract_features(text)
+    dimensions = evaluate_dimensions(features)
+    score = calculate_score(dimensions)
 
     return {
         "score": score,
-        "type": classify_type(text),
-        "signals": signals,
-        "top_signals": get_top_signals(signals),
-        "decision_weight": get_decision_weight(signals),
-        "reversibility": get_reversibility(signals),
-        "action": get_action(score, signals),
-        "analysis": generate_analysis(signals),
-        "questions": generate_questions(signals)
+        "dimensions": dimensions,
+        "decision_weight": get_decision_weight(dimensions),
+        "reversibility": get_reversibility(dimensions),
+        "action": get_action(score),
+        "questions": generate_questions(dimensions),
+        "analysis": generate_analysis(dimensions)
     }

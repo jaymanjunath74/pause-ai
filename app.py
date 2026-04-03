@@ -15,7 +15,7 @@ if st.button("Analyze"):
     else:
         result = analyze_input(user_input)
 
-        score = result.get("score", 0)
+        score = result["score"]
 
         # ============================
         # SCORE DISPLAY
@@ -29,11 +29,15 @@ if st.button("Analyze"):
             st.error(f"Pause Score: {score} (High Risk)")
 
         # ============================
-        # TYPE
+        # DIMENSIONS (🔥 CORE FEATURE)
         # ============================
 
-        st.subheader("Decision Type")
-        st.write(result.get("type", "N/A"))
+        st.subheader("Decision Dimensions")
+
+        dimensions = result["dimensions"]
+
+        for k, v in dimensions.items():
+            st.write(f"**{k.replace('_', ' ').title()}**: {v}")
 
         # ============================
         # DECISION INTELLIGENCE
@@ -43,32 +47,18 @@ if st.button("Analyze"):
 
         col1, col2, col3 = st.columns(3)
 
-        col1.metric("Weight", result.get("decision_weight", "N/A"))
-        col2.metric("Reversibility", result.get("reversibility", "N/A"))
-        col3.metric("Action", result.get("action", "N/A"))
+        col1.metric("Weight", result["decision_weight"])
+        col2.metric("Reversibility", result["reversibility"])
+        col3.metric("Action", result["action"])
 
         # ============================
-        # KEY DRIVERS
-        # ============================
-
-        st.subheader("Key Drivers")
-
-        for s in result.get("top_signals", []):
-            st.write(f"- {s.replace('_', ' ').title()}")
-
-        # ============================
-        # QUESTIONS (NEW 🔥)
+        # QUESTIONS
         # ============================
 
         st.subheader("Questions to Consider")
 
-        questions = result.get("questions", [])
-
-        if questions:
-            for q in questions:
-                st.write(f"- {q}")
-        else:
-            st.write("No additional questions needed.")
+        for q in result["questions"]:
+            st.write(f"- {q}")
 
         # ============================
         # ANALYSIS
@@ -76,12 +66,10 @@ if st.button("Analyze"):
 
         st.subheader("Analysis")
 
-        analysis = result.get("analysis", {})
-
         st.markdown("**Reason:**")
-        for r in analysis.get("reason", []):
+        for r in result["analysis"]["reason"]:
             st.write(f"- {r}")
 
         st.markdown("**Recommendation:**")
-        for r in analysis.get("recommendation", []):
+        for r in result["analysis"]["recommendation"]:
             st.write(f"- {r}")
