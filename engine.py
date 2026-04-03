@@ -15,42 +15,63 @@ def get_client():
 
 
 # ============================
+# SAFE JSON PARSER
+# ============================
+
+def safe_parse_json(content: str):
+    """
+    Handles cases where model returns extra text around JSON.
+    """
+    try:
+        return json.loads(content)
+    except Exception:
+        try:
+            start = content.find("{")
+            end = content.rfind("}") + 1
+            return json.loads(content[start:end])
+        except Exception:
+            return None
+
+
+# ============================
 # LLM STRUCTURE EXTRACTION
 # ============================
 
 def extract_structure(text):
     client = get_client()
 
+    # Fallback if no API
     if client is None:
-        return {
-            "request_kind": "unknown",
-            "decision_present": False,
-            "decision_type": "none",
-            "decision_statement": None,
-            "stakes_level": "unknown",
-            "time_pressure": "unknown",
-            "information_completeness": "low",
-            "reversibility": "unknown",
-            "uncertainty_level": "high",
-            "confidence": 0.0
-        }
+        return default_structure()
 
     prompt = f"""
 You are a decision intelligence system.
 
-Your job is to determine whether a user input involves a decision — even if the decision is not explicitly stated.
+Your job is to determine whether a user input involves a decision — even if it is not explicitly stated.
 
-A decision is present if:
-- The user is choosing between actions
-- The user is planning a significant action
-- The user is asking "how to" do something meaningful (this implies a decision)
+A decision exists if the user:
+1. Is choosing between options
+2. Is planning or intending to take an action
+3. Is asking how to perform a meaningful action
+4. Expresses desire to do something significant
+
+---
 
 Examples:
-- "Should I quit my job?" → decision (explicit)
-- "How do I quit my job?" → decision (implicit)
-- "I want to move abroad" → decision (implicit)
-- "Write me an email" → NOT a decision
-- "What is inflation?" → NOT a decision
+
+EXPLICIT:
+- "Should I quit my job?" → decision
+
+IMPLICIT:
+- "How do I quit my job?" → decision
+- "I want to buy a car" → decision
+- "I am thinking of moving abroad" → decision
+- "I plan to start a business" → decision
+
+NOT decisions:
+- "Write an email"
+- "What is inflation?"
+- "Tell me a joke"
 
 ---
 
@@ -83,9 +104,9 @@ Return ONLY valid JSON:
   "confidence": 0.0-1.0
 }}
 
-IMPORTANT:
-- If there is ANY reasonable interpretation of a decision → set decision_present = true
-- Prefer false negatives LESS than false positives
+CRITICAL RULES:
+- If the user expresses intent to act → decision_present MUST be true
+- Prefer false positives over false negatives
 """
 
     try:
@@ -95,29 +116,67 @@ IMPORTANT:
             temperature=0
         )
 
-        content = response.choices[0].message.content
-        structure = json.loads(content)
+        raw = response.choices[0].message.content
+        structure = safe_parse_json(raw)
+
+        if not structure:
+            return default_structure()
 
     except Exception:
-        structure = {
-            "request_kind": "unknown",
-            "decision_present": False,
-            "decision_type": "none",
-            "decision_statement": None,
-            "stakes_level": "unknown",
-            "time_pressure": "unknown",
-            "information_completeness": "low",
-            "reversibility": "unknown",
-            "uncertainty_level": "high",
-            "confidence": 0.0
-        }
+        return default_structure()
 
     # ============================
-    # CONFIDENCE-BASED FALLBACK
+    # VALIDATION LAYER (CRITICAL)
     # ============================
 
+    structure = validate_structure(structure, text)
+
+    return structure
+
+
+# ============================
+# DEFAULT STRUCTURE
+# ============================
+
+def default_structure():
+    return {
+        "request_kind": "unknown",
+        "decision_present": False,
+        "decision_type": "none",
+        "decision_statement": None,
+        "stakes_level": "unknown",
+        "time_pressure": "unknown",
+        "information_completeness": "low",
+        "reversibility": "unknown",
+        "uncertainty_level": "high",
+        "confidence": 0.0
+    }
+
+
+# ============================
+# VALIDATION (NO HARDCODING, JUST SAFETY)
+# ============================
+
+def validate_structure(structure, text):
+    """
+    Fixes LLM mistakes WITHOUT keyword hardcoding.
+    """
+
+    # Ensure required keys exist
+    required_keys = [
+        "request_kind",
+        "decision_present",
+        "decision_type",
+        "confidence"
+    ]
+
+    for key in required_keys:
+        if key not in structure:
+            return default_structure()
+
+    # Confidence fallback (soft correction)
     if structure.get("confidence", 0) < 0.5:
-        if structure.get("request_kind") in ["task", "mixed"]:
+        if structure.get("request_kind") in ["task", "mixed", "decision"]:
             structure["decision_present"] = True
             structure["decision_type"] = "implicit"
 
