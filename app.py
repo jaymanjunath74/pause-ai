@@ -22,12 +22,7 @@ if st.button("Analyze"):
 
     if result.get("intent"):
 
-        if result["intent"] == "non_decision":
-            st.info(result["message"])
-
-        elif result["intent"] == "low_stakes":
-            st.info(result["message"])
-
+        st.info(result["message"])
         st.stop()
 
     score = result["score"]

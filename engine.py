@@ -91,7 +91,7 @@ NOT decisions:
 ---
 
 Stakes guidelines:
-- Low → everyday trivial actions (drink coffee, watch movie)
+- Low → everyday trivial actions (eat chips, drink coffee)
 - Medium → moderate personal impact
 - High → financial, career, health, life decisions
 
@@ -142,7 +142,7 @@ CRITICAL RULES:
 
 
 # ============================
-# VALIDATION LAYER
+# VALIDATION
 # ============================
 
 def validate_structure(structure):
@@ -269,21 +269,21 @@ def generate_analysis(structure):
 def analyze_input(text):
     structure = extract_structure(text)
 
-    # 🚨 NO decision
+    # 🚫 NOT A DECISION
     if not structure.get("decision_present"):
         return {
             "intent": "non_decision",
             "message": "This doesn’t appear to involve a meaningful decision."
         }
 
-    # 🚨 LOW STAKES decision
+    # 🟢 LOW STAKES DECISION
     if structure.get("stakes_level") == "low":
         return {
             "intent": "low_stakes",
-            "message": "This looks like a low-stakes decision. No deep analysis needed."
+            "message": "This looks like a low-stakes decision. You're probably fine to proceed — unless there's something deeper you're considering."
         }
 
-    # ✅ FULL ANALYSIS
+    # 🔥 FULL ANALYSIS
     score = calculate_score(structure)
 
     return {
