@@ -1,7 +1,7 @@
 import re
 
 # ============================
-# SIGNAL CONFIG
+# SIGNAL CONFIG (WEIGHTS)
 # ============================
 
 SIGNALS = {
@@ -37,6 +37,7 @@ def detect_signals(text):
     signals = set()
     t = text.lower()
 
+    # Stakes
     if re.search(r"\$\s?\d+", text):
         signals.add("financial_magnitude_high")
 
@@ -52,41 +53,45 @@ def detect_signals(text):
     if any(w in t for w in ["medical", "legal"]):
         signals.add("health_legal_risk")
 
+    # Context
     if len(text.split()) < 8:
         signals.add("low_context")
 
     if "should i" in t:
         signals.add("missing_constraints")
         signals.add("missing_alternatives")
-        signals.add("reassurance_seeking")
         signals.add("insufficient_information")
+        signals.add("reassurance_seeking")
 
     if "?" in text:
         signals.add("unclear_objective")
 
+    # Cognitive
     if any(w in t for w in ["now", "asap", "urgent"]):
         signals.add("urgency_bias")
 
     if any(w in t for w in ["angry", "frustrated", "excited"]):
         signals.add("emotional_state")
 
+    # Action
     if any(w in t for w in ["buy", "quit", "send"]):
         signals.add("premature_action")
 
     if not any(w in t for w in ["now", "urgent"]):
         signals.add("decision_can_wait")
 
+    # AI Fit
     if "should i" in t:
         signals.add("needs_human_judgment")
 
-    if any(w in t for w in ["invest", "legal", "medical"]):
+    if any(w in t for w in ["invest", "medical", "legal"]):
         signals.add("high_risk_advice")
 
     return list(signals)
 
 
 # ============================
-# SCORING
+# SCORING (NORMALIZED)
 # ============================
 
 def calculate_score(signals):
@@ -95,6 +100,19 @@ def calculate_score(signals):
 
     score = 100 * (1 - total_penalty / max_possible)
     return max(int(score), 5)
+
+
+# ============================
+# TOP SIGNALS (PRIORITY)
+# ============================
+
+def get_top_signals(signals):
+    ranked = sorted(
+        signals,
+        key=lambda s: SIGNALS.get(s, 0),
+        reverse=True
+    )
+    return ranked[:3]
 
 
 # ============================
@@ -126,7 +144,7 @@ def get_reversibility(signals):
 
 
 # ============================
-# ACTION RECOMMENDATION
+# ACTION
 # ============================
 
 def get_action(score, signals):
@@ -153,41 +171,19 @@ def generate_analysis(signals):
     if "financial_magnitude_high" in signals:
         reasons.append("Large financial commitment detected")
 
-    if "low_context" in signals:
-        reasons.append("Not enough context to make a strong decision")
-
     if "irreversible_decision" in signals:
         reasons.append("Decision may be hard to reverse")
 
-    if "urgency_bias" in signals:
-        reasons.append("Urgency may lead to impulsive action")
+    if "low_context" in signals:
+        reasons.append("Not enough context to decide confidently")
 
     recommendations.append("Clarify your constraints (budget, priorities)")
-    recommendations.append("Consider alternatives before committing")
+    recommendations.append("Compare alternatives before committing")
     recommendations.append("Delay decision if not time-sensitive")
 
     return {
         "reason": reasons[:3],
         "recommendation": recommendations[:3]
-    }
-
-
-# ============================
-# MAIN
-# ============================
-
-def analyze_input(text):
-    signals = detect_signals(text)
-    score = calculate_score(signals)
-
-    return {
-        "score": score,
-        "type": classify_type(text),
-        "signals": signals,
-        "decision_weight": get_decision_weight(signals),
-        "reversibility": get_reversibility(signals),
-        "action": get_action(score, signals),
-        "analysis": generate_analysis(signals)
     }
 
 
@@ -208,3 +204,23 @@ def classify_type(text):
         return "Personal"
 
     return "General"
+
+
+# ============================
+# MAIN
+# ============================
+
+def analyze_input(text):
+    signals = detect_signals(text)
+    score = calculate_score(signals)
+
+    return {
+        "score": score,
+        "type": classify_type(text),
+        "signals": signals,
+        "top_signals": get_top_signals(signals),
+        "decision_weight": get_decision_weight(signals),
+        "reversibility": get_reversibility(signals),
+        "action": get_action(score, signals),
+        "analysis": generate_analysis(signals)
+    }

@@ -3,20 +3,11 @@ from engine import analyze_input
 
 st.set_page_config(page_title="Pause AI", layout="centered")
 
-# ----------------------------
-# Header
-# ----------------------------
 st.title("⏸️ Pause AI")
 st.caption("Clarity before action")
 
-# ----------------------------
-# Input
-# ----------------------------
 user_input = st.text_area("Enter your prompt:", height=150)
 
-# ----------------------------
-# Analyze Button
-# ----------------------------
 if st.button("Analyze"):
 
     if not user_input.strip():
@@ -26,9 +17,7 @@ if st.button("Analyze"):
 
         score = result["score"]
 
-        # ----------------------------
-        # Score Display
-        # ----------------------------
+        # Score
         if score >= 80:
             st.success(f"Pause Score: {score} (Low Risk)")
         elif score >= 50:
@@ -36,36 +25,25 @@ if st.button("Analyze"):
         else:
             st.error(f"Pause Score: {score} (High Risk)")
 
-        # ----------------------------
-        # Decision Type
-        # ----------------------------
+        # Type
         st.subheader("Decision Type")
         st.write(result["type"])
 
-        # ----------------------------
-        # Decision Intelligence (NEW)
-        # ----------------------------
+        # Decision Intelligence
         st.subheader("Decision Intelligence")
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Weight", result["decision_weight"])
-        col2.metric("Reversibility", result["reversibility"])
-        col3.metric("Action", result["action"])
+        col1.metric("Weight", result.get("decision_weight", "N/A"))
+        col2.metric("Reversibility", result.get("reversibility", "N/A"))
+        col3.metric("Action", result.get("action", "N/A"))
 
-        # ----------------------------
-        # Signals
-        # ----------------------------
-        st.subheader("Signals Detected")
+        # Top Signals
+        st.subheader("Key Drivers")
 
-        if result["signals"]:
-            for s in result["signals"]:
-                st.write(f"- {s.replace('_', ' ').title()}")
-        else:
-            st.write("No major risk signals detected")
+        for s in result.get("top_signals", []):
+            st.write(f"- {s.replace('_', ' ').title()}")
 
-        # ----------------------------
-        # Analysis (FIXED)
-        # ----------------------------
+        # Analysis
         st.subheader("Analysis")
 
         analysis = result["analysis"]
