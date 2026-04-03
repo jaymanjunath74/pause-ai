@@ -19,9 +19,6 @@ def get_client():
 # ============================
 
 def safe_parse_json(content: str):
-    """
-    Handles cases where model returns extra text around JSON.
-    """
     try:
         return json.loads(content)
     except Exception:
@@ -34,13 +31,31 @@ def safe_parse_json(content: str):
 
 
 # ============================
+# DEFAULT STRUCTURE
+# ============================
+
+def default_structure():
+    return {
+        "request_kind": "unknown",
+        "decision_present": False,
+        "decision_type": "none",
+        "decision_statement": None,
+        "stakes_level": "low",
+        "time_pressure": "unknown",
+        "information_completeness": "low",
+        "reversibility": "high",
+        "uncertainty_level": "low",
+        "confidence": 0.0
+    }
+
+
+# ============================
 # LLM STRUCTURE EXTRACTION
 # ============================
 
 def extract_structure(text):
     client = get_client()
 
-    # Fallback if no API
     if client is None:
         return default_structure()
 
@@ -75,6 +90,13 @@ NOT decisions:
 
 ---
 
+Stakes guidelines:
+- Low → everyday trivial actions (drink coffee, watch movie)
+- Medium → moderate personal impact
+- High → financial, career, health, life decisions
+
+---
+
 User Input:
 "{text}"
 
@@ -84,23 +106,14 @@ Return ONLY valid JSON:
 
 {{
   "request_kind": "decision | task | information | conversation | mixed",
-
   "decision_present": true/false,
-
   "decision_type": "explicit | implicit | none",
-
   "decision_statement": "clear decision being considered OR null",
-
   "stakes_level": "low | medium | high",
-
   "time_pressure": "low | medium | high | unknown",
-
   "information_completeness": "low | medium | high",
-
   "reversibility": "low | medium | high",
-
   "uncertainty_level": "low | medium | high",
-
   "confidence": 0.0-1.0
 }}
 
@@ -125,56 +138,14 @@ CRITICAL RULES:
     except Exception:
         return default_structure()
 
-    # ============================
-    # VALIDATION LAYER (CRITICAL)
-    # ============================
-
-    structure = validate_structure(structure, text)
-
-    return structure
+    return validate_structure(structure)
 
 
 # ============================
-# DEFAULT STRUCTURE
+# VALIDATION LAYER
 # ============================
 
-def default_structure():
-    return {
-        "request_kind": "unknown",
-        "decision_present": False,
-        "decision_type": "none",
-        "decision_statement": None,
-        "stakes_level": "unknown",
-        "time_pressure": "unknown",
-        "information_completeness": "low",
-        "reversibility": "unknown",
-        "uncertainty_level": "high",
-        "confidence": 0.0
-    }
-
-
-# ============================
-# VALIDATION (NO HARDCODING, JUST SAFETY)
-# ============================
-
-def validate_structure(structure, text):
-    """
-    Fixes LLM mistakes WITHOUT keyword hardcoding.
-    """
-
-    # Ensure required keys exist
-    required_keys = [
-        "request_kind",
-        "decision_present",
-        "decision_type",
-        "confidence"
-    ]
-
-    for key in required_keys:
-        if key not in structure:
-            return default_structure()
-
-    # Confidence fallback (soft correction)
+def validate_structure(structure):
     if structure.get("confidence", 0) < 0.5:
         if structure.get("request_kind") in ["task", "mixed", "decision"]:
             structure["decision_present"] = True
@@ -273,17 +244,17 @@ def generate_analysis(structure):
     recommendations = []
 
     if structure.get("information_completeness") == "low":
-        reasons.append("Insufficient information to make a confident decision")
+        reasons.append("Insufficient information to decide confidently")
 
     if structure.get("uncertainty_level") == "high":
         reasons.append("High uncertainty detected")
 
     if structure.get("reversibility") == "low":
-        reasons.append("Decision may be difficult to reverse")
+        reasons.append("Hard to reverse decision")
 
-    recommendations.append("Gather more relevant information before deciding")
-    recommendations.append("Evaluate potential outcomes and risks")
-    recommendations.append("Avoid rushing high-impact decisions")
+    recommendations.append("Gather missing information")
+    recommendations.append("Evaluate risks and outcomes")
+    recommendations.append("Avoid rushing important decisions")
 
     return {
         "reason": reasons[:3],
@@ -298,12 +269,21 @@ def generate_analysis(structure):
 def analyze_input(text):
     structure = extract_structure(text)
 
+    # 🚨 NO decision
     if not structure.get("decision_present"):
         return {
-            "intent": structure.get("request_kind", "unknown"),
-            "message": f"This appears to be a '{structure.get('request_kind')}' request, not a clear decision problem."
+            "intent": "non_decision",
+            "message": "This doesn’t appear to involve a meaningful decision."
         }
 
+    # 🚨 LOW STAKES decision
+    if structure.get("stakes_level") == "low":
+        return {
+            "intent": "low_stakes",
+            "message": "This looks like a low-stakes decision. No deep analysis needed."
+        }
+
+    # ✅ FULL ANALYSIS
     score = calculate_score(structure)
 
     return {

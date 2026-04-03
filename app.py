@@ -17,23 +17,16 @@ if st.button("Analyze"):
     result = analyze_input(user_input)
 
     # ============================
-    # INTENT HANDLING
+    # INTENT ROUTING
     # ============================
 
     if result.get("intent"):
-        intent = result.get("intent")
 
-        if intent == "task":
-            st.info("This looks like a task, but there may be an underlying decision.")
+        if result["intent"] == "non_decision":
+            st.info(result["message"])
 
-        elif intent == "information":
-            st.info("This looks like an information request, not a decision.")
-
-        elif intent == "conversation":
-            st.info("This appears conversational, not a decision.")
-
-        else:
-            st.info(result.get("message"))
+        elif result["intent"] == "low_stakes":
+            st.info(result["message"])
 
         st.stop()
 
