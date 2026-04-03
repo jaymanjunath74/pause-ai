@@ -58,10 +58,13 @@ def detect_signals(text):
         signals.add("low_context")
 
     if "should i" in t:
-        signals.add("missing_constraints")
-        signals.add("missing_alternatives")
-        signals.add("insufficient_information")
-        signals.add("reassurance_seeking")
+        signals.update([
+            "missing_constraints",
+            "missing_alternatives",
+            "insufficient_information",
+            "reassurance_seeking",
+            "needs_human_judgment"
+        ])
 
     if "?" in text:
         signals.add("unclear_objective")
@@ -81,9 +84,6 @@ def detect_signals(text):
         signals.add("decision_can_wait")
 
     # AI Fit
-    if "should i" in t:
-        signals.add("needs_human_judgment")
-
     if any(w in t for w in ["invest", "medical", "legal"]):
         signals.add("high_risk_advice")
 
@@ -91,7 +91,7 @@ def detect_signals(text):
 
 
 # ============================
-# SCORING (NORMALIZED)
+# SCORING
 # ============================
 
 def calculate_score(signals):
@@ -103,15 +103,11 @@ def calculate_score(signals):
 
 
 # ============================
-# TOP SIGNALS (PRIORITY)
+# TOP SIGNALS
 # ============================
 
 def get_top_signals(signals):
-    ranked = sorted(
-        signals,
-        key=lambda s: SIGNALS.get(s, 0),
-        reverse=True
-    )
+    ranked = sorted(signals, key=lambda s: SIGNALS.get(s, 0), reverse=True)
     return ranked[:3]
 
 
@@ -122,13 +118,10 @@ def get_top_signals(signals):
 def get_decision_weight(signals):
     if "health_legal_risk" in signals:
         return "Very High"
-
     if "financial_magnitude_high" in signals or "career_impact" in signals:
         return "High"
-
     if "relationship_impact" in signals:
         return "Medium"
-
     return "Low"
 
 
@@ -137,10 +130,7 @@ def get_decision_weight(signals):
 # ============================
 
 def get_reversibility(signals):
-    if "irreversible_decision" in signals:
-        return "Hard to Reverse"
-
-    return "Reversible"
+    return "Hard to Reverse" if "irreversible_decision" in signals else "Reversible"
 
 
 # ============================
@@ -150,13 +140,10 @@ def get_reversibility(signals):
 def get_action(score, signals):
     if "insufficient_information" in signals:
         return "Ask More Info"
-
     if score < 30:
         return "Pause"
-
     if score < 60:
         return "Think More"
-
     return "Proceed"
 
 
@@ -185,6 +172,30 @@ def generate_analysis(signals):
         "reason": reasons[:3],
         "recommendation": recommendations[:3]
     }
+
+
+# ============================
+# QUESTION ENGINE (NEW 🔥)
+# ============================
+
+def generate_questions(signals):
+    questions = []
+
+    if "financial_magnitude_high" in signals:
+        questions.append("What % of your savings does this represent?")
+        questions.append("Will this impact your emergency fund?")
+
+    if "low_context" in signals or "insufficient_information" in signals:
+        questions.append("What is your monthly income and expenses?")
+        questions.append("Do you have existing debt obligations?")
+
+    if "irreversible_decision" in signals:
+        questions.append("What happens if you regret this decision in 6 months?")
+
+    if "missing_alternatives" in signals:
+        questions.append("What cheaper or lower-risk alternatives exist?")
+
+    return questions[:5]
 
 
 # ============================
@@ -222,5 +233,6 @@ def analyze_input(text):
         "decision_weight": get_decision_weight(signals),
         "reversibility": get_reversibility(signals),
         "action": get_action(score, signals),
-        "analysis": generate_analysis(signals)
+        "analysis": generate_analysis(signals),
+        "questions": generate_questions(signals)
     }
