@@ -15,10 +15,18 @@ if st.button("Analyze"):
     else:
         result = analyze_input(user_input)
 
+        # ============================
+        # INTENT HANDLING
+        # ============================
+
+        if result.get("intent"):
+            st.info(result["message"])
+            st.stop()
+
         score = result["score"]
 
         # ============================
-        # SCORE DISPLAY
+        # SCORE
         # ============================
 
         if score >= 80:
@@ -29,15 +37,16 @@ if st.button("Analyze"):
             st.error(f"Pause Score: {score} (High Risk)")
 
         # ============================
-        # DIMENSIONS (🔥 CORE FEATURE)
+        # STRUCTURED OUTPUT
         # ============================
 
-        st.subheader("Decision Dimensions")
+        st.subheader("Decision Breakdown")
 
-        dimensions = result["dimensions"]
+        structure = result["structure"]
 
-        for k, v in dimensions.items():
-            st.write(f"**{k.replace('_', ' ').title()}**: {v}")
+        for k, v in structure.items():
+            if k != "confidence":
+                st.write(f"**{k.replace('_', ' ').title()}**: {v}")
 
         # ============================
         # DECISION INTELLIGENCE

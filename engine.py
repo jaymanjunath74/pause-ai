@@ -1,86 +1,72 @@
-# ============================
-# PAUSE AI - CLEAN ENGINE (V2)
-# ============================
+import json
+from openai import OpenAI
 
-def extract_features(text):
-    t = text.lower()
-
-    return {
-        "length": len(text.split()),
-        "has_numbers": any(char.isdigit() for char in text),
-        "is_question": "?" in text,
-        "has_uncertainty": any(word in t for word in ["should", "not sure", "confused"]),
-        "has_urgency": any(word in t for word in ["now", "asap", "urgent"]),
-        "has_action_words": any(word in t for word in ["buy", "quit", "move", "invest", "sell", "start", "stop"])
-    }
-
+client = OpenAI()
 
 # ============================
-# DIMENSION EVALUATION
+# LLM STRUCTURE EXTRACTION
 # ============================
 
-def evaluate_dimensions(features):
-    dimensions = {}
+def extract_structure(text):
+    prompt = f"""
+You are a decision analysis engine.
 
-    # Information Quality
-    if features["length"] < 8:
-        dimensions["information_quality"] = "LOW"
-    elif features["length"] < 20:
-        dimensions["information_quality"] = "MEDIUM"
-    else:
-        dimensions["information_quality"] = "HIGH"
+Convert the user input into a structured JSON.
 
-    # Clarity
-    if features["is_question"]:
-        dimensions["clarity"] = "LOW"
-    else:
-        dimensions["clarity"] = "MEDIUM"
+User Input:
+"{text}"
 
-    # Stakes (proxy-based, no domain assumption)
-    if features["has_numbers"]:
-        dimensions["stakes"] = "HIGH"
-    else:
-        dimensions["stakes"] = "UNKNOWN"
+Return ONLY valid JSON with this schema:
 
-    # Certainty
-    if features["has_uncertainty"]:
-        dimensions["certainty"] = "LOW"
-    else:
-        dimensions["certainty"] = "MEDIUM"
+{{
+  "request_kind": "decision | task | information | conversation | unknown",
+  "decision_present": true/false,
+  "decision_statement": "string or null",
+  "stakes_level": "low | medium | high | unknown",
+  "time_pressure": "low | medium | high | unknown",
+  "information_completeness": "low | medium | high",
+  "reversibility": "low | medium | high | unknown",
+  "uncertainty_level": "low | medium | high",
+  "confidence": 0.0-1.0
+}}
+"""
 
-    # Time Pressure
-    if features["has_urgency"]:
-        dimensions["time_pressure"] = "HIGH"
-    else:
-        dimensions["time_pressure"] = "LOW"
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
 
-    # Action Readiness
-    if features["has_action_words"]:
-        dimensions["action_readiness"] = "HIGH"
-    else:
-        dimensions["action_readiness"] = "LOW"
+    content = response.choices[0].message.content
 
-    return dimensions
+    try:
+        return json.loads(content)
+    except:
+        return {
+            "request_kind": "unknown",
+            "decision_present": False,
+            "confidence": 0
+        }
 
 
 # ============================
-# SCORING (DIMENSION-BASED)
+# SCORING (DETERMINISTIC)
 # ============================
 
-def calculate_score(dimensions):
+def calculate_score(structure):
     score = 100
 
     penalties = {
-        "information_quality": {"LOW": 25, "MEDIUM": 10, "HIGH": 0},
-        "clarity": {"LOW": 15, "MEDIUM": 5},
-        "certainty": {"LOW": 15, "MEDIUM": 5},
-        "time_pressure": {"HIGH": 10, "LOW": 0},
-        "action_readiness": {"HIGH": 10, "LOW": 0}
+        "information_completeness": {"low": 30, "medium": 15, "high": 0},
+        "uncertainty_level": {"high": 20, "medium": 10, "low": 0},
+        "time_pressure": {"high": 10, "medium": 5, "low": 0},
+        "reversibility": {"low": 20, "medium": 10, "high": 0}
     }
 
-    for dim, value in dimensions.items():
-        if dim in penalties and value in penalties[dim]:
-            score -= penalties[dim][value]
+    for key, mapping in penalties.items():
+        value = structure.get(key)
+        if value in mapping:
+            score -= mapping[value]
 
     return max(score, 5)
 
@@ -89,15 +75,21 @@ def calculate_score(dimensions):
 # DECISION INTELLIGENCE
 # ============================
 
-def get_decision_weight(dimensions):
-    if dimensions["stakes"] == "HIGH":
+def get_decision_weight(structure):
+    if structure.get("stakes_level") == "high":
         return "High"
-    return "Medium"
+    elif structure.get("stakes_level") == "medium":
+        return "Medium"
+    return "Low"
 
 
-def get_reversibility(dimensions):
-    if dimensions["action_readiness"] == "HIGH":
+def get_reversibility(structure):
+    rev = structure.get("reversibility")
+
+    if rev == "low":
         return "Hard to Reverse"
+    elif rev == "medium":
+        return "Moderate"
     return "Reversible"
 
 
@@ -112,59 +104,52 @@ def get_action(score):
 
 
 # ============================
-# QUESTION ENGINE (DIMENSION-DRIVEN)
+# QUESTION ENGINE (DERIVED)
 # ============================
 
-def generate_questions(dimensions):
+def generate_questions(structure):
     questions = []
 
-    if dimensions["information_quality"] == "LOW":
+    if structure.get("information_completeness") == "low":
         questions.append("What key information are you missing?")
-        questions.append("What details would make this decision clearer?")
 
-    if dimensions["clarity"] == "LOW":
-        questions.append("What exactly are you trying to decide?")
-
-    if dimensions["certainty"] == "LOW":
+    if structure.get("uncertainty_level") == "high":
         questions.append("What assumptions might be incorrect?")
-        questions.append("What would change your confidence in this decision?")
 
-    if dimensions["stakes"] == "HIGH":
-        questions.append("How significant is this decision relative to your situation?")
+    if structure.get("reversibility") == "low":
+        questions.append("What happens if this decision goes wrong?")
 
-    if dimensions["time_pressure"] == "HIGH":
+    if structure.get("time_pressure") == "high":
         questions.append("Is the urgency real or self-imposed?")
 
-    if dimensions["action_readiness"] == "HIGH":
-        questions.append("What happens if this decision goes wrong?")
-        questions.append("Can you test this decision before fully committing?")
+    if structure.get("stakes_level") == "high":
+        questions.append("How significant is this decision relative to your situation?")
 
     questions.append("What are the second-order consequences of this decision?")
 
-    # Deduplicate + limit
-    return list(dict.fromkeys(questions))[:5]
+    return questions[:5]
 
 
 # ============================
 # ANALYSIS
 # ============================
 
-def generate_analysis(dimensions):
+def generate_analysis(structure):
     reasons = []
     recommendations = []
 
-    if dimensions["information_quality"] == "LOW":
+    if structure.get("information_completeness") == "low":
         reasons.append("Insufficient information to make a confident decision")
 
-    if dimensions["clarity"] == "LOW":
-        reasons.append("Decision framing is unclear")
+    if structure.get("uncertainty_level") == "high":
+        reasons.append("High uncertainty detected")
 
-    if dimensions["certainty"] == "LOW":
-        reasons.append("Uncertainty detected in decision-making")
+    if structure.get("reversibility") == "low":
+        reasons.append("Decision may be difficult to reverse")
 
     recommendations.append("Gather more relevant information before deciding")
-    recommendations.append("Clarify your objective and constraints")
-    recommendations.append("Consider possible outcomes and risks")
+    recommendations.append("Evaluate potential outcomes and risks")
+    recommendations.append("Avoid rushing high-impact decisions")
 
     return {
         "reason": reasons[:3],
@@ -177,16 +162,23 @@ def generate_analysis(dimensions):
 # ============================
 
 def analyze_input(text):
-    features = extract_features(text)
-    dimensions = evaluate_dimensions(features)
-    score = calculate_score(dimensions)
+    structure = extract_structure(text)
+
+    # ROUTING (NO HARD CODING)
+    if not structure.get("decision_present", False):
+        return {
+            "intent": structure.get("request_kind", "unknown"),
+            "message": f"This appears to be a '{structure.get('request_kind')}' request, not a decision problem."
+        }
+
+    score = calculate_score(structure)
 
     return {
         "score": score,
-        "dimensions": dimensions,
-        "decision_weight": get_decision_weight(dimensions),
-        "reversibility": get_reversibility(dimensions),
+        "structure": structure,
+        "decision_weight": get_decision_weight(structure),
+        "reversibility": get_reversibility(structure),
         "action": get_action(score),
-        "questions": generate_questions(dimensions),
-        "analysis": generate_analysis(dimensions)
+        "questions": generate_questions(structure),
+        "analysis": generate_analysis(structure)
     }
